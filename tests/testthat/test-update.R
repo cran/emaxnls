@@ -1,0 +1,53 @@
+mod <- emax_nls(
+  structural_model = rsp_1 ~ exp_1, 
+  covariate_model = list(E0 ~ cnt_a, Emax ~ 1, logEC50 ~ 1), 
+  data = emax_df
+)
+
+test_that("basic use of .emax_add_term and .emax_remove_term does not error", {
+  skip_if(!.is_converged(mod), "Skip if convergence fails on this architecture")
+
+  expect_no_error(.emax_add_term(mod, E0 ~ bin_e, quiet = TRUE))
+  expect_no_error(.emax_remove_term(mod, E0 ~ cnt_a, quiet = TRUE))
+})
+
+test_that(".emax_add_term and .emax_remove_term update the covariate model", {
+  skip_if(!.is_converged(mod), "Skip if convergence fails on this architecture")
+
+  mod_add <- .emax_add_term(mod, E0 ~ bin_e, quiet = TRUE)
+  mod_del <- .emax_remove_term(mod, E0 ~ cnt_a, quiet = TRUE)
+  # check the coefficient names
+  expect_true("E0_bin_e" %in% .get_coefficient_names(mod_add))
+  expect_false("E0_cnt_a" %in% .get_coefficient_names(mod_del))
+  # check the covariate formula
+  expect_true("bin_e" %in% all.vars(.get_covariate_formula(mod_add, "E0")))
+  expect_false("cnt_a" %in% all.vars(.get_covariate_formula(mod_del, "E0")))
+  # check the internal parameters
+  expect_length(.get_nls(mod_add)$m$getPars(), 5L)
+  expect_length(.get_nls(mod_del)$m$getPars(), 3L)
+})
+
+test_that("adding a term and later removing leaves the model substantively unchanged", {
+  skip_if(!.is_converged(mod), "Skip if convergence fails on this architecture")
+
+  mod_add <- .emax_add_term(mod, E0 ~ bin_e, quiet = TRUE)
+  mod_del <- .emax_remove_term(mod_add, E0 ~ bin_e, quiet = TRUE)
+  expect_equal(.get_coefficient_names(mod_del), .get_coefficient_names(mod))
+  expect_equal(.get_covariate_formula(mod_del), .get_covariate_formula(mod), ignore_attr = TRUE)
+  expect_equal(.get_nls(mod)$m$getPars(), .get_nls(mod_del)$m$getPars())
+})
+
+test_that("adding already-existing covariate messages user and returns original object", {
+  skip_if(!.is_converged(mod), "Skip if convergence fails on this architecture")
+
+  expect_message(.emax_add_term(mod, E0 ~ cnt_a, quiet = FALSE), class = "emaxnls_message")
+  expect_equal(.emax_add_term(mod, E0 ~ cnt_a, quiet = TRUE), mod)
+})
+
+test_that("removing already-existing covariate messages user and returns original object", {
+  skip_if(!.is_converged(mod), "Skip if convergence fails on this architecture")
+  
+  expect_message(.emax_remove_term(mod, E0 ~ cnt_b, quiet = FALSE), class = "emaxnls_message")
+  expect_equal(.emax_remove_term(mod, E0 ~ cnt_b, quiet = TRUE), mod)
+})
+
