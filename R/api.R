@@ -1,65 +1,65 @@
 
 #' Estimate parameters for an Emax regression model
 #'
+#' Fits an Emax regression model for a continuous response variable using
+#' nonlinear least squares. For binary outcomes, use [emax_logistic()] instead.
+#'
 #' @param structural_model A two-sided formula of the form response ~ exposure
-#' @param covariate_model A list of two-sided formulas, each of specifying a 
-#' covariate model for a structural parameter
+#' @param covariate_model A list of two-sided formulas, each specifying a
+#' covariate model for a structural parameter. When `NULL` (the default), an
+#' intercept-only hyperbolic Emax model is fitted — equivalent to
+#' `list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1)`.
 #' @param data A data frame that includes all relevant variables
-#' @param init Initial values and bounds for parameters. See `emax_nls_init()`
-#' @param opts Model fitting and optimization options. See `emax_nls_options()`
+#' @param init Initial values and bounds for parameters. See [emax_nls_init()]
+#' @param opts Model fitting and optimisation options. See [emax_nls_options()]
 #' 
 #' @details
-#' The `emax_nls()` function is the workhorse function for estimating an Emax
-#' regression model. Pass a two-sided formula to the `structural_model` argument
-#' to specify the exposure variable and the response variable 
-#' (e.g., `response ~ exposure`), and pass a list of formulas to the 
-#' `covariate_model` argument to specify covariates of interest. At a minimum
-#' the covariate model requires specification of the covariate model for the 
-#' E0 parameter, the Emax parameter, and the logEC50 parameter. For example, 
-#' a formula like `E0 ~ age + group` would indicate that `age` and `group` 
-#' should both be included as covariates on the baseline response E0. When 
-#' no covariates are to be added, use a formula like `Emax ~ 1`. 
+#' Pass a two-sided formula to `structural_model` to specify the response and
+#' exposure variables (e.g., `response ~ exposure`), and a list of formulas to
+#' `covariate_model` to specify covariates. At a minimum the covariate model
+#' requires formulas for E0, Emax, and logEC50. A formula like `E0 ~ age + group`
+#' includes `age` and `group` as covariates on the baseline response; use
+#' `Emax ~ 1` when no covariates are to be added for a parameter.
 #' 
-#' The `emax_nls()` function can support sigmoidal emax models as well as 
-#' hyperbolic models. To build a sigmoidal model (where the Hill parameter)
-#' is estimated from the data, the `covariate_model` argument must also 
-#' include a formula for the `logHill` parameter. For instance, if the 
-#' covariate model includes `logHill ~ 1`, the model will estimate the value
-#' of the Hill parameter (with no covariates on it) from the data set.
+#' To fit a sigmoidal Emax model (estimating the Hill parameter), include a
+#' formula for `logHill` in `covariate_model`, e.g. `logHill ~ 1`. Without
+#' this term a hyperbolic model is fitted. Interaction terms in the covariate
+#' model are not currently supported.
 #' 
-#' At present, `emax_nls()` does not support binary response variables, nor
-#' is it possible to specify interaction terms in the covariate model. 
-#' 
-#' When estimating model parameters, the `init` argument can be used to 
-#' specify the starting values for the optimization. If unspecified, 
-#' the `emax_nls_init()` function is used to automatically guess sensible
-#' starting values. Please see the documentation of that function for 
-#' additional details on manually specifying the initial values. 
-#' 
-#' The `emax_nls()` function currently supports three optimization methods:
-#' the Gauss-Newton algorithm, the Levenberg-Marquardt algorithm, and the 
-#' 'nl2sol' algorithm from the Port library. For more information on how
-#' to customize the optimization procedure, please see
-#' the documentation for `emax_nls_options()`.
+#' Starting values are constructed automatically via [emax_nls_init()] unless
+#' the `init` argument is supplied manually. Three optimisation algorithms are
+#' available; see [emax_nls_options()] for details.
 #'  
 #' @returns
 #' An object of class `emaxnls`
 #' 
-#' @seealso `emax_nls_options()`, `emax_nls_init()`
+#' @seealso [emax_nls_options()], [emax_nls_init()]
 #' 
 #' @examples
+#' # simplest call: hyperbolic Emax with no covariates
+#' emax_nls(
+#'   structural_model = rsp_1 ~ exp_1,
+#'   data = emax_df,
+#'   opts = emax_nls_options(max_time = 10)
+#' )
+#' 
+#' # with a covariate on the baseline parameter
 #' emax_nls(
 #'   structural_model = rsp_1 ~ exp_1, 
 #'   covariate_model = list(E0 ~ cnt_a, Emax ~ 1, logEC50 ~ 1), 
-#'   data = emax_df
+#'   data = emax_df,
+#'   opts = emax_nls_options(max_time = 10)
 #' )
 #'  
 #' @export
 emax_nls <- function(structural_model,
-                     covariate_model,
+                     covariate_model = NULL,
                      data,
                      init = NULL,
-                     opts = NULL) {  
+                     opts = NULL) {
+  if (is.null(covariate_model)) {
+    covariate_model <- list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1)
+  }
   .emax_nls(
     structural_model = structural_model,
     covariate_model = covariate_model,
@@ -71,42 +71,53 @@ emax_nls <- function(structural_model,
 
 #' Settings used to estimate Emax model
 #'
+#' Constructs a settings object controlling the optimisation algorithm and
+#' other aspects of model fitting for [emax_nls()]. Pass the result to the
+#' `opts` argument of [emax_nls()].
+#'
 #' @param optim_method Character string specifying the algorithm used to solve 
-#' the nonlinear least squares optimization problem. Supported options are 
+#' the nonlinear least squares optimisation problem. Supported options are 
 #' "gauss" (the default), "port", and "levenberg". See details.
-#' @param optim_control A list of arguments used to control the behavior of 
-#' the optimization algorithm. Allowed values differ depending on which 
-#' algorithm is used
+#' @param optim_control A list of arguments used to control the behaviour of 
+#' the optimisation algorithm. Allowed values differ depending on which 
+#' algorithm is used. The default is `optim_control = NULL`, which uses the
+#' default settings for the relevant optimisation function; see details.
 #' @param quiet When `quiet=TRUE`, messages are suppressed
 #' @param weights Numeric vector providing the weights for observations. When
-#' specified, weighted least squares is used
-#' @param na.action How should missing values in the data be handled?
+#' specified, weighted least squares is used. The default is `weights = NULL`
+#' (unweighted least squares).
+#' @param na.action How should missing values in the data be handled? The
+#' default is `na.action = getOption("na.action")`.
+#' @param max_time Maximum elapsed time in seconds allowed for the model fit.
+#' If the optimiser has not converged within this time, it is terminated and
+#' the model is treated as non-converged (the same outcome as any other
+#' convergence failure). Defaults to `Inf` (no time limit).
 #'
 #' @details
 #' At present there are three supported values for `optim_method`:
 #' 
 #' - "gauss": Estimate parameters using the Gauss-Newton algorithm. This is 
-#'   equivalent to the using "default" option in `nls()`
-#' - "port": Estimate parameters using bounded optimization with the "nl2sol" 
-#'   algorithm from from the the Port library. Equivalent to "port" in `nls()`
+#'   equivalent to the using "default" option in [stats::nls()]
+#' - "port": Estimate parameters using bounded optimisation with the "nl2sol" 
+#'   algorithm from from the the Port library. Equivalent to "port" in [stats::nls()]
 #' - "levenberg": Estimate parameters using the Levenberg-Marquardt algorithm. 
-#'   This is equivalent to using `nlsLM()` from the "minpack.lm" package.
+#'   This is equivalent to using [minpack.lm::nlsLM()] from the "minpack.lm" package.
 #' 
 #' Note that the Golub-Pereyra algorithm for partially linear least-squares (i.e. the 
-#' "plinear" option in `nls()`) is not currently supported for Emax regression. Informal
+#' "plinear" option in [stats::nls()]) is not currently supported for Emax regression. Informal
 #' testing suggests it does not perform well for these models, and rarely converges.
 #' 
 #' The `optim_control` argument mirrors the corresponding control arguments for 
-#' the respective optimization methods:
+#' the respective optimisation methods:
 #' 
-#' - For "gauss" and "port": the list should match the output of `stats::nls.control()`
-#' - For "levenberg": the list should match the output of `minpack.lm::nls.lm.control()`
+#' - For "gauss" and "port": the list should match the output of [stats::nls.control()]
+#' - For "levenberg": the list should match the output of [minpack.lm::nls.lm.control()]
 #' 
 #' If `optim_control = NULL`, the default settings are used for the relevant function.
 #' 
 #' @returns A list of settings
 #' 
-#' @seealso `emax_nls()`, `emax_nls_init()`
+#' @seealso [emax_nls()], [emax_nls_init()]
 #' 
 #' @examples
 #' # default options
@@ -121,44 +132,56 @@ emax_nls_options <- function(optim_method = "gauss",
                              optim_control = NULL,
                              quiet = FALSE,
                              weights = NULL,
-                             na.action = options("na.action")) {
+                             na.action = getOption("na.action"),
+                             max_time = Inf) {
   .emax_nls_options(
     optim_method = optim_method,
     optim_control = optim_control,
     quiet = quiet,
     weights = weights,
-    na.action = na.action
+    na.action = na.action,
+    max_time = max_time
   )
 }
 
 #' Construct an initial guess for the Emax model parameters
 #'
+#' Constructs a data frame of starting values and parameter bounds for the
+#' Emax NLS optimisation, using heuristics derived from the data.
+#'
 #' @param structural_model A two-sided formula of the form response ~ exposure
-#' @param covariate_model A list of two-sided formulas, each of specifying a 
-#' covariate model for a structural parameter
+#' @param covariate_model A list of two-sided formulas, each specifying a
+#' covariate model for a structural parameter. When `NULL` (the default), an
+#' intercept-only hyperbolic Emax model is assumed — equivalent to
+#' `list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1)`.
 #' @param data A data frame
 #'
 #' @returns A data frame
 #'
-#' @details The `emax_nls()` function requires that the user specify the initial
+#' @details The [emax_nls()] function requires that the user specify the initial
 #' values for the model parameters. Specifically, it expects to be supplied with
 #' a data frame with columns named `parameter`, `covariate`, and `start`. If a
-#' bounded optimization method is used (e.g. if the "port" method is used), the
+#' bounded optimisation method is used (e.g. if the "port" method is used), the
 #' data frame also needs to have columns named `lower` and `upper`. The data 
 #' frame should contain one row per parameter. In most cases the user does not
-#' need to define this manually, because `emax_nls_init()` can use heuristics to
+#' need to define this manually, because [emax_nls_init()] can use heuristics to
 #' make a sensible guess about what to use as starting values. By default this
-#' is what `emax_nls()` relies upon, automatically calling `emax_nls_init()`
+#' is what [emax_nls()] relies upon, automatically calling [emax_nls_init()]
 #' using the appropriate values for the `structural_model`, the `covariate_model`,
 #' and the `data`. 
 #' 
-#' @export
+#' @export 
 #' 
-#' @seealso `emax_nls()`, `emax_nls_options()`
+#' @seealso [emax_nls()], [emax_nls_options()]
 #' 
 #' @examples
-#' # use a heuristic to construct sensible start values, and plausible
-#' # upper and lower bounds within which the estimate is expected to fall 
+#' # intercept-only hyperbolic Emax (default covariate_model)
+#' emax_nls_init(
+#'   structural_model = rsp_1 ~ exp_1,
+#'   data = emax_df
+#' )
+#' 
+#' # with a covariate on E0
 #' emax_nls_init(
 #'   structural_model = rsp_1 ~ exp_1, 
 #'   covariate_model = list(E0 ~ cnt_a, Emax ~ 1, logEC50 ~ 1), 
@@ -169,51 +192,78 @@ emax_nls_options <- function(optim_method = "gauss",
 #' coef(emax_nls(
 #'   structural_model = rsp_1 ~ exp_1, 
 #'   covariate_model = list(E0 ~ cnt_a, Emax ~ 1, logEC50 ~ 1), 
-#'   data = emax_df
+#'   data = emax_df,
+#'   opts = emax_nls_options(max_time = 10)
 #' ))
 #' 
-emax_nls_init <- function(structural_model, covariate_model, data) {
+emax_nls_init <- function(structural_model, covariate_model = NULL, data) {
+  if (is.null(covariate_model)) {
+    covariate_model <- list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1)
+  }
   .emax_nls_init(structural_model, covariate_model, data)
 }
 
 
 #' Check Emax regression model for convergence status
 #'
+#' Returns `TRUE` if the model converged during fitting and `FALSE` otherwise.
+#' The reason for convergence or non-convergence is attached as the `names`
+#' attribute of the return value, so it prints alongside the logical result.
+#'
 #' @param mod An `emaxnls` object
 #'
-#' @returns
-#' Logical value
+#' @returns A named logical scalar. The value is `TRUE` when the model
+#' converged and `FALSE` otherwise. The `names` attribute holds a short
+#' description of the outcome:
 #'
-#' @details
-#' This is a convenience function that takes an Emax regression
-#' object as input. It returns `TRUE` if the optimization routine
-#' converged during model fitting, and `FALSE` if it did not.
-#' 
+#' - `"converged"`: the optimiser reached a solution successfully.
+#' - `"maximum time exceeded"`: the `max_time` limit set in
+#'   [emax_nls_options()] / [emax_logistic_options()] was hit before the
+#'   optimiser finished.
+#' - `"maximum iterations exceeded"`: the optimiser ran out of iterations.
+#'   This applies to the Gauss-Newton algorithm (when [stats::nls()] reports
+#'   "number of iterations exceeded maximum") and to the Levenberg-Marquardt
+#'   algorithm (when [minpack.lm::nlsLM()] reports that the iteration count has reached
+#'   `maxiter`). The iteration budget can be increased via the
+#'   `optim_control` argument of [emax_nls_options()].
+#' - Raw optimiser message: all other failures return the error message from
+#'   the underlying optimiser directly. Common examples include a singular
+#'   gradient matrix at the initial parameter estimates, the Gauss-Newton
+#'   step factor collapsing below `minFactor`, and Port-algorithm convergence
+#'   codes such as false convergence (code 8) or singular convergence (code 7).
+#'   These messages are algorithm-specific and are passed through unchanged
+#'   because no single label covers them accurately.
+#'
+#' @seealso [emax_nls()], [emax_nls_options()]
+#'
 #' @export
 emax_converged <- function(mod) {
-  .is_converged(mod)
+  structure(.is_converged(mod), names = .convergence_reason(mod))
 }
 
 #' Add or remove a covariate term from an Emax regression
+#'
+#' Add or remove a single covariate term from an existing Emax regression
+#' model, returning a new fitted model object.
 #'
 #' @param mod An `emaxnls` object
 #' @param formula A formula such as E0 ~ AGE
 #'
 #' @details
-#' The `emax_add_term()` and `emax_remove_term()` functions take an existing Emax regression
-#' object, and allow the user to add or remove a specific term to the model. It is not expected
-#' that users will need these functions very often, but they provide the basis for the stepwise
-#' covariate modeling procedures that are very commonly used when building Emax regressions.
+#' These functions are not typically called directly; they underpin the
+#' stepwise covariate modelling procedures that are very commonly used when
+#' building Emax regressions.
 #' 
-#' @seealso `emax_nls()`, [emax_scm]
+#' @seealso [emax_nls()], [emax_scm]
 #' 
 #' 
 #' @returns
 #' An object of class `emaxnls`
 #'
 #' @examples
-#' mod_0 <- emax_nls(rsp_1 ~ exp_1, list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1), emax_df)
-#' mod_1 <- emax_nls(rsp_1 ~ exp_1, list(E0 ~ cnt_a, Emax ~ 1, logEC50 ~ 1), emax_df)
+#' opts <- emax_nls_options(max_time = 10)
+#' mod_0 <- emax_nls(rsp_1 ~ exp_1, list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1), emax_df, opts = opts)
+#' mod_1 <- emax_nls(rsp_1 ~ exp_1, list(E0 ~ cnt_a, Emax ~ 1, logEC50 ~ 1), emax_df, opts = opts)
 #' 
 #' if (emax_converged(mod_0)) emax_add_term(mod_0, E0 ~ cnt_a)
 #' 
@@ -234,54 +284,71 @@ emax_remove_term <- function(mod, formula) {
   .emax_remove_term(mod = mod, formula = formula)
 }
 
-#' Stepwise covariate modeling for Emax regression
+#' Stepwise covariate modelling for Emax regression
+#'
+#' Performs stepwise covariate modelling by forward addition
+#' ([emax_scm_forward()]), backward elimination ([emax_scm_backward()]), or
+#' both in sequence. Use [emax_scm_history()] to retrieve the history of all
+#' models tested during the procedure.
 #'
 #' @param mod An `emaxnls` object
 #' @param candidates A list of candidate covariates
-#' @param threshold Threshold for addition or removal
+#' @param threshold Threshold for addition or removal. Used only when
+#'   `criterion = "p-value"` (the default); ignored otherwise.
+#' @param criterion Model selection criterion. One of `"p-value"` (default),
+#'   `"aic"`, or `"bic"`.
 #' @param seed Seed for the RNG state
 #'
 #' @returns
 #' An object of class `emaxnls`
 #'
 #' @details
-#' The emaxnls package supports stepwise covariate modeling via forward addition and 
-#' backward elimination. The `emax_scm_forward()` function supports forward addition, 
-#' the `emax_scm_backward()` function supports backward elimination, and the syntax 
-#' is designed to allow forward-backward procedures by piping a base model to 
-#' `emax_scm_forward()` and then to `emax_scm_backward()`. In both cases, the 
-#' function takes an `emaxnls` regression object as the first argument, as well as 
-#' a list of candidate `covariates` to be considered for addition (in the forward
-#' addition case) or deletion (backward elimination). The input must be a named list,
-#' with the names corresponding to the relevant structural parameter, and the values
-#' should be character vector specifying covariates of interest. See the examples for
-#' an illustration of how this argument should be specified.
+#' The `candidates` argument must be a named list whose names correspond to
+#' structural parameters (e.g. `E0`, `Emax`) and whose values are character
+#' vectors of covariate names to consider. See the examples for an
+#' illustration.
 #' 
-#' As present, these functions only support stepwise regression using p-values as the
-#' criterion for addition or deletion. The `threshold` argument corresponds to the 
-#' threshold p-value to be used. In future, other methods (e.g., selection on the 
-#' basis of AIC values) may be supported.
+#' Three model selection criteria are available via the `criterion` argument:
 #' 
-#' The `seed` argument is used to control the RNG state for stochastic components of 
-#' the stepwise procedure. However, please note that the `seed` argument is currently 
-#' experimental, and may be removed in future releases.
+#' - `"p-value"` (default): a term is added if its ANOVA p-value falls below
+#'   `threshold` (forward) or removed if its p-value exceeds `threshold`
+#'   (backward). When multiple candidates satisfy the threshold, the one with
+#'   the most extreme p-value is chosen.
+#' - `"aic"`: a term is added (forward) or removed (backward) if doing so
+#'   strictly decreases AIC. When multiple candidates improve AIC, the one
+#'   yielding the lowest AIC is chosen.
+#' - `"bic"`: same as `"aic"` but using BIC as the criterion.
 #' 
-#' A key feature of the stepwise covariate modeling functions is that they keep track
-#' of every tested model, and store information about this history internally within the
-#' `emaxnls` object that gets returned. Use the `emax_scm_history()` function to extract
-#' this history.
+#' When `criterion` is `"aic"` or `"bic"`, the `threshold` argument has no
+#' effect and is ignored.
 #' 
-#' @seealso `emax_nls()`
+#' The history returned by [emax_scm_history()] always records AIC and BIC for
+#' every model tested (columns `model_aic` and `model_bic`), regardless of
+#' which criterion was used for selection. The `criterion` column records which
+#' criterion drove each forward or backward step.
+#' 
+#' The `seed` argument controls the RNG state for any stochastic components of
+#' the procedure. It is currently experimental and may be removed in future
+#' releases.
+#' 
+#' Every model tested during the procedure is stored internally in the returned
+#' object. Use [emax_scm_history()] to extract this record.
+#' 
+#' @seealso [emax_nls()]
 #' 
 #' @examples
-#' base_model <- emax_nls(rsp_1 ~ exp_1, list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1), emax_df)
+#' base_model <- emax_nls(
+#'   structural_model = rsp_1 ~ exp_1,
+#'   data = emax_df,
+#'   opts = emax_nls_options(max_time = 10)
+#' )
 #' 
 #' covariate_list <- list(
 #'   E0 = c("cnt_a", "cnt_b", "cnt_c", "bin_d", "bin_e"),
 #'   Emax = c("cnt_a", "cnt_b", "cnt_c", "bin_d", "bin_e")
 #' )
 #' 
-#' # add covariates to the base model using forward addition
+#' # add covariates to the base model using forward addition (p-value criterion)
 #' forward_model <- emax_scm_forward(
 #'   mod = base_model,
 #'   candidates = covariate_list, 
@@ -297,31 +364,69 @@ emax_remove_term <- function(mod, formula) {
 #' ) 
 #' final_model
 #' 
-#' # show the history of all models tested during the forward addition
-#' # step and the backward deletion step
+#' # show the history of all models tested, including which criterion was used
 #' emax_scm_history(final_model)
+#' 
+#' # AIC-based forward addition
+#' forward_aic <- emax_scm_forward(
+#'   mod = base_model,
+#'   candidates = covariate_list,
+#'   criterion = "aic"
+#' )
+#' 
+#' # BIC-based backward elimination
+#' final_bic <- emax_scm_backward(
+#'   mod = forward_aic,
+#'   candidates = covariate_list,
+#'   criterion = "bic"
+#' )
+#' 
+#' emax_scm_history(final_bic)
+#' 
+#' # example using binary outcomes
+#' base_model_logistic <- emax_logistic(
+#'   structural_model = rsp_2 ~ exp_1,
+#'   data = emax_df,
+#'   opts = emax_logistic_options(max_time = 10)
+#' )
+#' forward_model_logistic <- emax_scm_forward(
+#'   mod = base_model_logistic,
+#'   candidates = covariate_list, 
+#'   threshold = .01
+#' )
+#' final_model_logistic <- emax_scm_backward(
+#'   mod = forward_model_logistic,
+#'   candidates = covariate_list, 
+#'   threshold = .001
+#' )
+#' 
+#' final_model_logistic
+#' 
+#' emax_scm_history(final_model_logistic)
 #' 
 #' @name emax_scm
 NULL
 
 #' @export
 #' @rdname emax_scm
-emax_scm_forward <- function(mod, candidates, threshold = .01, seed = NULL) {
+emax_scm_forward <- function(mod, candidates, threshold = .01, criterion = "p-value", seed = NULL) {
   .emax_scm_forward(
     mod = mod,
     candidates = candidates,
     threshold = threshold,
+    criterion = criterion,
     seed = seed
   )
 }
 
 #' @export
 #' @rdname emax_scm
-emax_scm_backward <- function(mod, candidates, threshold = .001, seed = NULL) {
+emax_scm_backward <- function(mod, candidates, threshold = .001, criterion = "p-value", seed = NULL) {
   .emax_scm_backward(
     mod = mod,
     candidates = candidates,
     threshold = threshold,
+    criterion = criterion,
     seed = seed
   )
 }
@@ -334,61 +439,239 @@ emax_scm_history <- function(mod) {
 
 #' Construct Emax prediction function from model object
 #'
-#' @param mod An `emaxnls` object
+#' Extracts a customizable prediction function from a fitted Emax model,
+#' allowing predictions to be evaluated at arbitrary data and parameter values.
 #'
-#' @returns A function `f` with arguments `data` and `params`. The `data`
-#' argument defaults to the data used to estimate the model, and the
-#' `params` argument defaults to the estimated parameter values. Both
-#' can be customized, as long as `data` contains columns corresponding
-#' to each of the variables used by the model, and `params` is a named
-#' numeric vector of the appropriate length. The names for `params` 
-#' must exactly match the names of the vector returned by `coef(mod)`.
-#' 
-#' The return value for `f` is a numeric vector of model predictions for
-#' each row in `data`, evaluated at parameters `params`. 
-#' 
-#' @seealso `emax_nls()`
+#' @param mod An `emaxnls` or `emaxlogistic` object
+#' @param ... Ignored
+#'
+#' @details
+#' The extracted function accepts `data` and `param` arguments. Both default
+#' to the values used when fitting the model. When supplying custom values,
+#' `data` must contain all variables used by the model, and `param` must be a
+#' named numeric vector whose names exactly match those returned by `coef(mod)`.
+#'
+#' **Scale of predictions.** For `emaxnls` objects the returned function
+#' produces predictions on the response scale (the same scale as the outcome
+#' variable). For `emaxlogistic` objects the structural Emax model is
+#' parameterized on the logit scale — `logit(p) = E0 + Emax * x / (x + EC50)`
+#' — but `emax_fun()` applies the inverse-logit transformation before
+#' returning, so predictions are on the probability scale. This is consistent
+#' with the default behaviour of [fitted()] and [predict()] for `emaxlogistic`
+#' objects. If you need the linear predictor (logit scale) directly, use
+#' `fitted(object, type = "link")` or `predict(object, type = "link")`.
+#'
+#' @returns A function with arguments `param` and `data` that evaluates the
+#' Emax model at the supplied (or default) parameter values and data. For
+#' `emaxnls` objects the return values are on the response scale; for
+#' `emaxlogistic` objects they are predicted probabilities in \eqn{(0, 1)}.
+#'
+#' @seealso [emax_nls()], [emax_logistic()]
 #'
 #' @export
 #' @examples
 #' 
-#' mod <- emax_nls(
+#' mod_c <- emax_nls(
 #'   structural_model = rsp_1 ~ exp_1, 
 #'   covariate_model = list(E0 ~ cnt_a, Emax ~ 1, logEC50 ~ 1), 
-#'   data = emax_df
+#'   data = emax_df,
+#'   opts = emax_nls_options(max_time = 10)
 #' )
 #' 
-#' # the emax simulation function can only be extracted if the
-#' # optimization routine converged
-#' if (emax_converged(mod)) {
+#' if (emax_converged(mod_c)) {
 #' 
-#'   par <- coef(mod)
-#'   
-#'   # customizable emax function with the same structural 
-#'   # model and same covariate model, defaulting to the 
-#'   # same data and parameters as the original model, but
-#'   # allowing user to pass their own data and parameters  
-#'   mod_fn <- emax_fun(mod)
+#'   par <- coef(mod_c)
+#'   mod_fn <- emax_fun(mod_c)
 #'   
 #'   # apply the function to a few rows of the original data
-#'   out_1 <- mod_fn(
-#'     data = emax_df[120:125, ],
-#'     param = par
-#'   )
-#'   print(out_1)
+#'   mod_fn(data = emax_df[120:125, ], param = par)
 #'   
-#'   # adjust the parameters
+#'   # adjust the parameters and re-evaluate
 #'   new_par <- par
 #'   new_par["E0_Intercept"] <- 0
-#'   
-#'   # simulate the model with the adjusted parameters
-#'   out_2 <- mod_fn(
-#'     data = emax_df[120:125, ],
-#'     param = new_par
-#'   )
-#'   print(out_2)
+#'   mod_fn(data = emax_df[120:125, ], param = new_par)
 #' 
 #' }
-emax_fun <- function(mod) {
-  .emax_fun(mod)
+#' 
+#' # for emaxlogistic, the returned function gives probabilities
+#' mod_b <- emax_logistic(
+#'   structural_model = rsp_2 ~ exp_1,
+#'   covariate_model = list(E0 ~ cnt_a, Emax ~ 1, logEC50 ~ 1),
+#'   data = emax_df,
+#'   opts = emax_logistic_options(max_time = 10)
+#' )
+#' 
+#' if (emax_converged(mod_b)) {
+#'   mod_fn_b <- emax_fun(mod_b)
+#'   mod_fn_b(data = emax_df[120:125, ])
+#' }
+emax_fun <- function(mod, ...) {
+  UseMethod("emax_fun")
+}
+
+
+#' Estimate parameters for a logistic Emax regression model
+#'
+#' Fits a logistic Emax regression model for a binary response variable using
+#' iterative reweighted least squares (IRLS). For continuous outcomes, use
+#' [emax_nls()] instead.
+#'
+#' @param structural_model A two-sided formula of the form response ~ exposure
+#' @param covariate_model A list of two-sided formulas, each specifying a
+#' covariate model for a structural parameter. When `NULL` (the default), an
+#' intercept-only hyperbolic Emax model is fitted — equivalent to
+#' `list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1)`.
+#' @param data A data frame that includes all relevant variables
+#' @param init Initial values and bounds for parameters. See [emax_logistic_init()]
+#' @param opts Model fitting and optimisation options. See [emax_logistic_options()]
+#'
+#' @details
+#' The structural Emax model is placed on the log-odds (logit) scale:
+#' 
+#' `logit(p) = E0 + Emax * x / (x + EC50)`  (hyperbolic)
+#' 
+#' `logit(p) = E0 + Emax * x^h / (x^h + EC50^h)`  (sigmoidal)
+#' 
+#' Estimation uses iterative reweighted least squares (IRLS). At each outer 
+#' iteration a weighted NLS problem is solved using working weights and a working
+#' response derived from the current parameter estimates. This is equivalent to
+#' Fisher scoring and produces maximum likelihood estimates at convergence.
+#' 
+#' The interface mirrors the [emax_nls()] function for continuous response models: 
+#' the `structural_model` and `covariate_model` arguments have the same specification, 
+#' including support for sigmoidal models via a `logHill` term. The response variable 
+#' in `structural_model` must be a binary (0/1) numeric vector.
+#' 
+#' @returns An object of class `emaxlogistic` (which also inherits from `emaxnls`)
+#'
+#' @seealso [emax_logistic_options()], [emax_logistic_init()], [emax_nls()]
+#'
+#' @examples
+#' # simplest call: hyperbolic Emax with no covariates
+#' emax_logistic(
+#'   structural_model = rsp_2 ~ exp_1,
+#'   data = emax_df,
+#'   opts = emax_logistic_options(max_time = 10)
+#' )
+#'
+#' # with a covariate on the baseline parameter
+#' emax_logistic(
+#'   structural_model = rsp_2 ~ exp_1,
+#'   covariate_model = list(E0 ~ cnt_a, Emax ~ 1, logEC50 ~ 1),
+#'   data = emax_df,
+#'   opts = emax_logistic_options(max_time = 10)
+#' )
+#'
+#' @export
+emax_logistic <- function(structural_model,
+                          covariate_model = NULL,
+                          data,
+                          init = NULL,
+                          opts = NULL) {
+  if (is.null(covariate_model)) {
+    covariate_model <- list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1)
+  }
+  .emax_logistic(
+    structural_model = structural_model,
+    covariate_model  = covariate_model,
+    data             = data,
+    init             = init,
+    opts             = opts
+  )
+}
+
+
+#' Settings used to estimate a logistic Emax model
+#'
+#' Constructs a settings object controlling the NLS optimiser and IRLS
+#' convergence for [emax_logistic()]. Pass the result to the `opts` argument
+#' of [emax_logistic()].
+#'
+#' @param optim_method Character string specifying the algorithm used for the
+#' weighted NLS step within each IRLS iteration. Supported options are 
+#' `"gauss"` (default), `"port"`, and `"levenberg"`. See [emax_nls_options()] 
+#' for details on each.
+#' @param optim_control A list of arguments controlling the NLS optimiser.
+#' The default is `optim_control = NULL`, which uses the default settings
+#' for the relevant optimisation function.
+#' @param quiet When `TRUE`, convergence warnings are suppressed.
+#' @param na.action How should missing values in the data be handled? The
+#' default is `na.action = getOption("na.action")`.
+#' @param max_iter Maximum number of IRLS outer iterations (default 25).
+#' @param tol Convergence tolerance: IRLS stops when the change in binomial
+#' deviance between successive iterations falls below `tol` (default 1e-6).
+#' @param max_time Maximum elapsed time in seconds allowed for the entire model
+#' fit (including all IRLS iterations). If the optimiser has not converged
+#' within this time, it is terminated and the model is treated as
+#' non-converged. Defaults to `Inf` (no time limit).
+#'
+#' @returns A list of settings
+#'
+#' @seealso [emax_logistic()], [emax_logistic_init()]
+#'
+#' @examples
+#' # default options
+#' emax_logistic_options()
+#'
+#' # increase maximum IRLS iterations
+#' emax_logistic_options(max_iter = 50)
+#'
+#' @export
+emax_logistic_options <- function(optim_method = "gauss",
+                                  optim_control = NULL,
+                                  quiet = FALSE,
+                                  na.action = getOption("na.action"),
+                                  max_iter = 25,
+                                  tol = 1e-6,
+                                  max_time = Inf) {
+  .emax_logistic_options(
+    optim_method  = optim_method,
+    optim_control = optim_control,
+    quiet         = quiet,
+    na.action     = na.action,
+    max_iter      = max_iter,
+    tol           = tol,
+    max_time      = max_time
+  )
+}
+
+
+#' Construct an initial guess for logistic Emax model parameters
+#'
+#' Constructs a data frame of starting values and parameter bounds for the
+#' logistic Emax model, using the same heuristic approach as [emax_nls_init()]
+#' applied to the empirical logit scale rather than the raw response.
+#'
+#' @param structural_model A two-sided formula of the form response ~ exposure
+#' @param covariate_model A list of two-sided formulas, each specifying a
+#' covariate model for a structural parameter. When `NULL` (the default), an
+#' intercept-only hyperbolic Emax model is assumed — equivalent to
+#' `list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1)`.
+#' @param data A data frame
+#'
+#' @returns A data frame with columns `parameter`, `covariate`, `start`, 
+#' `lower`, and `upper`
+#'
+#' @seealso [emax_logistic()], [emax_logistic_options()]
+#'
+#' @examples
+#' # intercept-only hyperbolic Emax (default covariate_model)
+#' emax_logistic_init(
+#'   structural_model = rsp_2 ~ exp_1,
+#'   data = emax_df
+#' )
+#'
+#' # with a covariate on E0
+#' emax_logistic_init(
+#'   structural_model = rsp_2 ~ exp_1,
+#'   covariate_model = list(E0 ~ cnt_a, Emax ~ 1, logEC50 ~ 1),
+#'   data = emax_df
+#' )
+#'
+#' @export
+emax_logistic_init <- function(structural_model, covariate_model = NULL, data) {
+  if (is.null(covariate_model)) {
+    covariate_model <- list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1)
+  }
+  .emax_logistic_init(structural_model, covariate_model, data)
 }

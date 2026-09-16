@@ -12,7 +12,8 @@
   
   if (is.null(opts)) opts <- emax_nls_options()
 
-  tmp <- .construct_design(structural_model, covariate_model, data)
+  tmp <- .construct_design(structural_model, covariate_model, data,
+                           na.action = opts$na.action)
 
   obj <- list(
     formula = list( 
@@ -36,6 +37,14 @@
   obj$env <- .construct_env(obj)
 
 
+  # Apply elapsed time limit if requested. The on.exit() reset ensures the
+  # limit is cleared when this function returns normally (without a timeout),
+  # because setTimeLimit() with transient = TRUE only auto-clears on timeout.
+  if (is.finite(opts$max_time)) {
+    on.exit(setTimeLimit(elapsed = Inf), add = TRUE)
+    setTimeLimit(elapsed = opts$max_time, transient = TRUE)
+  }
+
   # estimate the nls model
   tmp <- evalq(
     .nls_call(
@@ -45,7 +54,8 @@
       control   = control,
       algorithm = algorithm,
       lower     = lower, 
-      upper     = upper
+      upper     = upper,
+      weights   = weights
     ),
     envir = obj$env
   )
@@ -67,7 +77,8 @@
   stop("invalid covariate model", call. = FALSE)
 }
 
-.construct_design <- function(structural_model, covariate_model, data) {
+.construct_design <- function(structural_model, covariate_model, data,
+                              na.action = stats::na.pass) {
 
   # construct flat formula 
   ss <- deparse(structural_model)
@@ -82,8 +93,13 @@
     ff <- stats::as.formula(paste(ss, cc, sep = "+"))
   }
 
+  # Use model.frame to apply the na.action consistently across all variables
+  # (including the response) before building the model matrix. This prevents
+  # a dimension mismatch between the model matrix and the response column.
+  mf <- stats::model.frame(ff, data = data, na.action = na.action)
+
   # model matrix
-  mm <- stats::model.matrix(ff, data)
+  mm <- stats::model.matrix(ff, data = mf)
 
   preds <- all.vars(ff)        # variables required, including response
   terms <- colnames(mm)[-1]    # terms in the model, dropping intercept
@@ -94,7 +110,7 @@
 
   lookup <- .tibble(var_name = preds[index], term = terms)
   design <- stats::setNames(.as_tibble(mm), terms)
-  design[[preds[1]]] <- data[[preds[1]]]
+  design[[preds[1]]] <- mf[[preds[1]]]
      
   return(list(design = design, lookup = lookup))
 }
@@ -103,16 +119,25 @@
 # is that everything you need to construct env should be elsewhere
 # in the model object
 .construct_env <- function(obj) {
+  # Reconstruct named vectors from the parameter/covariate columns rather than
+  # relying on element names surviving data.frame column storage. Base R
+  # data.frame silently strips element names from numeric columns, so any names
+  # set on init$start/lower/upper at construction time are lost when tibble is
+  # unavailable. The parameter and covariate columns always encode this
+  # information reliably. See issue #57.
+  init    <- obj$info$init
+  coef_nms <- paste(init$parameter, init$covariate, sep = "_")
   rlang::new_environment(
     data = list(
-      formula   = obj$formula$expanded, 
-      design    = obj$info$design, 
-      start     = obj$info$init$start, 
-      control   = obj$info$opts$optim_control, 
-      algorithm = .nls_method(obj$info$opts$optim_method), 
-      lower     = obj$info$init$lower,
-      upper     = obj$info$init$upper
-    ), 
+      formula   = obj$formula$expanded,
+      design    = obj$info$design,
+      start     = stats::setNames(init$start, coef_nms),
+      control   = obj$info$opts$optim_control,
+      algorithm = .nls_method(obj$info$opts$optim_method),
+      lower     = stats::setNames(init$lower, coef_nms),
+      upper     = stats::setNames(init$upper, coef_nms),
+      weights   = obj$info$opts$weights
+    ),
     parent = parent.frame()
   )
 }
@@ -231,37 +256,28 @@
   paste0("(", x, ")")
 }
 
-.nls_call <- function(formula, data, start, control, algorithm, lower, upper) {
+.nls_call <- function(formula, data, start, control, algorithm, lower, upper,
+                      weights = NULL) {
+
+  # Build base argument list; only include weights when non-NULL because
+  # stats::nls() uses missing(weights) internally and behaves differently
+  # when weights is explicitly passed as NULL vs. not passed at all.
+  base_args <- list(formula = formula, data = data, start = start, control = control)
+  if (!is.null(weights)) base_args$weights <- weights
+
   if (algorithm %in% c("default", "plinear")) {
-    return(.nls_safe(
-      formula = formula,
-      data = data,
-      start = start,
-      control = control,
-      algorithm = algorithm
-    ))
+    return(do.call(.nls_safe, c(base_args, list(algorithm = algorithm))))
   }
   if (algorithm == "port") {
-    return(.nls_safe(
-      formula = formula,
-      data = data,
-      start = start,
-      control = control,
-      algorithm = algorithm,
-      lower = lower,
-      upper = upper
-    ))
+    return(do.call(.nls_safe, c(base_args,
+                                list(algorithm = algorithm,
+                                     lower = lower, upper = upper))))
   }
   if (algorithm == "LM") {
     .validate_optim_method("levenberg")
-    return(.nls_lm_safe(
-      formula = formula,
-      data = data,
-      start = start,
-      control = control,
-      algorithm = algorithm
-    ))
-  } 
+    return(do.call(.nls_lm_safe, base_args))
+  }
+  .abort(paste0("unknown algorithm: '", algorithm, "'"))
 }
 
 .nls_method <- function(optim_method) {

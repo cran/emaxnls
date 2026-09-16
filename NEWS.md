@@ -1,10 +1,248 @@
+# emaxnls 0.2.0
+
+## New features
+
+* Adds `emax_logistic()` for fitting binary-outcome Emax models using iterative
+  reweighted least squares (IRLS), along with `emax_logistic_init()` and
+  `emax_logistic_options()` for initialisation and configuration. All standard
+  S3 methods (`coef()`, `vcov()`, `confint()`, `residuals()`, `fitted()`,
+  `predict()`, `anova()`, `logLik()`, `AIC()`, `BIC()`, `deviance()`,
+  `simulate()`) are supported for the new `emaxlogistic` class (#22).
+
+* Adds input validation for the binary response variable in `emax_logistic()`,
+  with informative errors for non-binary or out-of-range values (#42).
+
+* Adds an `erplots` model interface so that `emaxnls` and `emaxlogistic` objects
+  work seamlessly with `erplots::er_plot_add_model()`, `er_plot_add_summary()`,
+  `er_plot_add_quantiles()`, and the VPC pipeline. Three S3 methods are
+  registered lazily at load time (no hard dependency on erplots):
+
+  - `er_predict()` returns point predictions and confidence intervals on a
+    user-supplied exposure grid, with predictions on the probability scale for
+    `emaxlogistic` models.
+  - `er_simulate()` returns `nsim` mean-curve draws reflecting parameter
+    uncertainty only (no residual noise), suitable for spaghetti/ribbon plots.
+  - `er_summary()` returns a coefficient table and a model-level glance row;
+    `p_value` is always `NULL` because Emax models have no single privileged
+    parameter.
+
+  Covariates present in the model but absent from the exposure grid passed by
+  erplots are filled in automatically with reference values (numeric: column
+  mean; factor/character: first factor level) (#65).
+
+* `emax_nls()`, `emax_logistic()`, `emax_nls_init()`, and `emax_logistic_init()`
+  now have `covariate_model = NULL` as a default. When `covariate_model` is
+  omitted, an intercept-only hyperbolic Emax model is fitted — equivalent to
+  supplying `list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1)` explicitly. Sigmoidal models
+  still require an explicit `logHill ~ 1` term in the covariate model. All
+  existing calls that supply `covariate_model` explicitly continue to work
+  without modification (#69).
+
+* `emax_converged()` now returns a **named** logical scalar. The `names`
+  attribute holds a short description of the outcome: `"converged"` on
+  success, `"maximum time exceeded"` when the `max_time` limit was hit,
+  `"maximum iterations exceeded"` when the optimiser ran out of iterations,
+  or the raw optimiser error message for any other failure. The value itself
+  is still `TRUE`/`FALSE`, so all existing code that checks
+  `if (emax_converged(mod))` continues to work without modification.
+  The SCM history returned by `emax_scm_history()` gains a new
+  `convergence_reason` column (character) that records this information for
+  every model tested during the procedure (#62).
+
+* `emax_scm_forward()` and `emax_scm_backward()` now accept a `criterion`
+  argument (`"p-value"`, `"aic"`, or `"bic"`). When `criterion = "aic"` or
+  `"bic"`, terms are added or removed based on whether they strictly improve
+  the information criterion rather than a p-value threshold, and the
+  `threshold` argument is ignored. The default remains `"p-value"`, preserving
+  existing behaviour. The history returned by `emax_scm_history()` gains a
+  `criterion` column recording which selection rule was applied in each step
+  (#68).
+
+* Adds a `max_time` argument to `emax_nls_options()` and
+  `emax_logistic_options()` that sets a maximum elapsed time (in seconds) for
+  model fitting. If the optimiser has not converged within the limit it is
+  terminated and the model is treated as non-converged, consistent with any
+  other convergence failure. Defaults to `Inf` (no limit). This is particularly
+  useful when running many models in an SCM procedure, where a single
+  pathological fit can otherwise stall the entire covariate search (#16).
+
+* Redesigns `print()` and `summary()` methods for `emaxnls` and `emaxlogistic`
+  objects:
+
+  - `print()` is now a concise model overview showing structural and covariate
+    formulas, fit statistics (observations, residual df, sigma or deviance, AIC),
+    and a coefficient table with estimates, standard errors, and confidence
+    intervals. Hypothesis tests are not shown by `print()`; a footer line
+    directs users to `summary()`. A `conf_level` argument controls the
+    interval level (default 0.95).
+
+  - `summary()` gains three new arguments:
+    - `suppress_nonsensical = TRUE`: suppresses the test statistic and p-value
+      for `logEC50_Intercept` by default. The logEC50 intercept is estimated on
+      the log-concentration scale, so testing `H0: logEC50 = 0` corresponds to
+      testing EC50 = 1 on the concentration scale — a threshold with no
+      pharmacometric meaning. The confidence interval for logEC50 is always
+      reported. Pass `suppress_nonsensical = FALSE` to restore the raw test.
+    - `p_adjust = "none"`: adjusts non-NA p-values via `p.adjust()` for
+      multiple-comparison correction; suppressed p-values are excluded from
+      the adjustment set.
+    - `simultaneous = FALSE`: when `TRUE`, computes simultaneous Wald confidence
+      intervals using `mvtnorm::qmvnorm()` on the correlation matrix from
+      `vcov()`, giving intervals with joint coverage at `conf_level` across
+      all parameters simultaneously.
+
+  - `summary(back_transform = TRUE)` now also sets the test statistic to `NA`
+    for back-transformed parameters, consistent with the standard error already
+    being `NA` on the back-transformed scale (#45).
+
+* `confint()` now falls back to Wald intervals with a warning if profile
+  likelihood computation fails (which can occur for sigmoidal models) (#45).
+
+## Bug fixes
+
+* `simulate()` and `confint(simultaneous = TRUE)` / `summary(simultaneous = TRUE)`
+  now degrade gracefully on platforms where the `mvtnorm` shared object is
+  installed but fails to link at runtime (observed on some clang-based Rhub
+  builders). A warning is issued and the computation continues using base-R
+  fallbacks: Cholesky-based multivariate normal sampling for `simulate()`, and
+  a Bonferroni-corrected normal quantile for simultaneous confidence intervals.
+  The fallback intervals are conservative but valid (#52).
+
+* The tibble package is now listed under `Suggests` rather than `Imports`,
+  making it a genuine optional dependency. All package functionality works
+  with or without tibble installed (#24).
+
+* Fixes `AIC()` and `BIC()` when called with multiple model arguments (#37).
+
+* Fixes `na.action` parameter not being passed through correctly in
+  `emax_nls()` and `emax_logistic()` (#38).
+
+* Fixes `predict()` omitting `residual.scale` from the return value when
+  `se.fit = TRUE` (#39).
+
+* Fixes crashes in `emax_logistic_init()` and prevents `Inf` parameter bounds
+  arising during initialisation (#40).
+
+* Improves error messages when the underlying optimiser fails during
+  `emax_nls()` or `emax_logistic()` fitting, and tightens argument validation
+  in `emax_fun()` (#41).
+
+* Fixes validator error messages to reference public API parameter names rather
+  than internal names (#43).
+
+* Fixes `NaN` deviance values for `emaxlogistic` models when predicted
+  probabilities are exactly 0 or 1 (boundary cases) (#44).
+
+* `confint()` now accepts a `simultaneous` argument, mirroring `summary()`.
+  Previously `confint(object, simultaneous = TRUE)` silently ignored the
+  argument (swallowed by `...`) and returned pointwise intervals. Setting
+  `simultaneous = TRUE` now returns simultaneous (joint) Wald intervals that
+  match those reported by `summary(object, simultaneous = TRUE)` (#46).
+
+## Documentation
+
+* Switches package language from en-US to en-GB for consistency with the
+  broader er* package family (ertte, erglm, erplots). All documentation,
+  roxygen comments, vignettes, and code comments now use UK English
+  spelling throughout (#61).
+
+* Expands the `summary()` documentation to explain the relationship between
+  the `p_adjust` and `simultaneous` arguments. The two are independent tools
+  for multiplicity — `p_adjust` corrects the hypothesis-test p-values, while
+  `simultaneous` widens the confidence intervals — and they use different
+  machinery, so their reject/retain decisions need not agree. The new
+  "Multiplicity: p-value adjustment versus simultaneous intervals" section
+  spells out what each argument changes, why the adjusted p-values and the
+  simultaneous intervals may disagree, and which tool to reach for (#47).
+
+
 # emaxnls 0.1.1
 
 * Expanded description of package.
-* Fixes bug when `emax_nls_init()` is called manually
+* Fixes bug when `emax_nls_init()` is called manually.
+* `anova()` now warns rather than errors when fewer than two converged models
+  are supplied.
 * Additional examples in documentation.
-* Improves unit tests.
+* Improved unit tests.
+
 
 # emaxnls 0.1.0
 
-* Initial CRAN submission.
+Initial CRAN submission. The package provides tools for fitting and analysing
+Emax dose-response models via nonlinear least squares.
+
+## Model fitting
+
+* `emax_nls()` fits continuous-response Emax models using NLS, supporting both
+  the hyperbolic (`E0 + Emax * x / (EC50 + x)`) and sigmoidal
+  (`E0 + Emax * x^Hill / (EC50^Hill + x^Hill)`) model forms.
+
+* `emax_nls_options()` configures the optimisation algorithm and control
+  parameters. Three algorithms are supported via the `optim_method` argument:
+  `"gauss"` (Gauss-Newton, default), `"port"` (bounded nl2sol), and
+  `"levenberg"` (Levenberg-Marquardt via `minpack.lm`).
+
+* `emax_nls_init()` generates starting values and parameter bounds
+  automatically from the data, including support for categorical covariates.
+  Users can also call it directly to inspect or override the initialisation
+  before fitting.
+
+## Covariate modelling
+
+* Covariates can be added to any structural parameter (E0, Emax, logEC50,
+  logHill) via a formula interface, e.g. `emax_nls(rsp ~ dose, data = df, E0 = ~ group + age)`.
+
+* `emax_add_term()` and `emax_remove_term()` update a fitted model by adding
+  or removing a single covariate term without refitting from scratch.
+
+## Stepwise covariate modelling (SCM)
+
+* `emax_scm_forward()` performs forward covariate selection, adding one term
+  at a time while the likelihood-ratio test p-value stays below a threshold.
+
+* `emax_scm_backward()` performs backward elimination, removing terms while
+  the p-value exceeds a threshold.
+
+* `emax_scm_history()` returns the sequence of models tested during an SCM
+  procedure, including AIC, BIC, and convergence status for each candidate.
+
+## S3 methods
+
+* `print()` displays a brief model summary.
+
+* `summary()` produces a coefficient table with standard errors, confidence
+  intervals, and hypothesis tests. A `back_transform = TRUE` argument
+  re-expresses log-scaled parameters (logEC50, logHill) on their natural
+  scales (EC50, Hill) in the output.
+
+* `coef()` extracts the parameter vector; supports `back_transform = TRUE`.
+
+* `vcov()` returns the estimated variance-covariance matrix.
+
+* `confint()` computes profile-likelihood confidence intervals.
+
+* `residuals()` and `fitted()` return model residuals and fitted values.
+
+* `predict()` generates predictions, optionally with standard errors.
+
+* `anova()` compares nested models by likelihood-ratio test.
+
+* `logLik()`, `AIC()`, `BIC()`, `sigma()`, `nobs()`, and `df.residual()`
+  return standard model-fit statistics.
+
+* `simulate()` draws Monte Carlo replicates by resampling parameters from
+  the asymptotic normal distribution of the estimates (requires `mvtnorm`).
+
+* `emax_fun()` extracts a standalone prediction function from a fitted model
+  that can be evaluated at arbitrary dose values and parameter vectors.
+
+* `emax_converged()` returns `TRUE` or `FALSE` indicating whether the
+  optimiser converged. All S3 methods handle non-convergent models gracefully
+  by returning an `emaxnls_null` object rather than erroring.
+
+## Data
+
+* `emax_df`: a synthetic dataset of 400 observations across four dose groups
+  (0, 100, 200, 300), with a continuous response, a binary response, two
+  exposure metrics, continuous and binary covariates, and a categorical
+  covariate.

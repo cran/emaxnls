@@ -33,17 +33,19 @@
   covariate_model[[str_param]] <- new
 
   # initial parameter guess for updated model
-  tmp <- .construct_design(structural_model, covariate_model, .get_data(mod))
+  na_action <- .get_options(mod)$na.action
+  tmp <- .construct_design(structural_model, covariate_model, .get_data(mod),
+                           na.action = na_action)
   init <- .guess_init(
     variables = .construct_variables(structural_model, covariate_model, tmp$lookup),
     design = tmp$design
   )
 
   # re-run
-  updated <- .emax_nls(
+  updated <- .refit(
+    mod = mod,
     structural_model = structural_model,
     covariate_model = covariate_model,
-    data = .get_data(mod),
     init = init,
     opts = .get_options(mod)
   )
@@ -87,20 +89,43 @@
   covariate_model[[str_param]] <- new
 
   # initial parameter guess for updated model
-  tmp <- .construct_design(structural_model, covariate_model, .get_data(mod))
+  na_action <- .get_options(mod)$na.action
+  tmp <- .construct_design(structural_model, covariate_model, .get_data(mod),
+                           na.action = na_action)
   init <- .guess_init(
     variables = .construct_variables(structural_model, covariate_model, tmp$lookup),
     design = tmp$design
   )
 
   # re-run
-  updated <- .emax_nls(
+  updated <- .refit(
+    mod = mod,
     structural_model = structural_model,
     covariate_model = covariate_model,
-    data = .get_data(mod),
     init = init,
     opts = .get_options(mod)
   )
 
   return(updated)
+}
+
+
+# dispatch refitting to the correct engine based on class
+.refit <- function(mod, structural_model, covariate_model, init, opts) {
+  if (.is_emaxlogistic(mod)) {
+    return(.emax_logistic(
+      structural_model = structural_model,
+      covariate_model  = covariate_model,
+      data             = .get_data(mod),
+      init             = init,
+      opts             = opts
+    ))
+  }
+  .emax_nls(
+    structural_model = structural_model,
+    covariate_model  = covariate_model,
+    data             = .get_data(mod),
+    init             = init,
+    opts             = opts
+  )
 }

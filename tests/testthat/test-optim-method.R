@@ -5,115 +5,103 @@ str_mod <- rsp_1 ~ exp_1
 cov_mod <- list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1)
 
 test_that("example base model converges with 'gauss'", {
-  skip_if(is_clang(), "Fails on clang due to toolchain issue unrelated to emaxnls code")
-  skip_if(is_gcc15(), "Fails on gcc15 due to toolchain issue unrelated to emaxnls code") 
-  
   mm <- "gauss"
   aa <- "default"
   expect_no_error(
     emax_nls(
-      structural_model = str_mod, 
-      covariate_model = cov_mod, 
+      structural_model = str_mod,
+      covariate_model = cov_mod,
       data = emax_df,
-      opts = emax_nls_options(optim_method = mm)
+      opts = test_nls_opts(optim_method = mm)
     )
   )
   expect_no_warning(
     emax_nls(
-      structural_model = str_mod, 
-      covariate_model = cov_mod, 
+      structural_model = str_mod,
+      covariate_model = cov_mod,
       data = emax_df,
-      opts = emax_nls_options(optim_method = mm)
+      opts = test_nls_opts(optim_method = mm)
     )
   )
   mod <- emax_nls(
-    structural_model = str_mod, 
-    covariate_model = cov_mod, 
+    structural_model = str_mod,
+    covariate_model = cov_mod,
     data = emax_df,
-    opts = emax_nls_options(optim_method = mm)
+    opts = test_nls_opts(optim_method = mm)
   )
-  if (.is_converged(mod)) {
-    expect_equal(.get_options(mod)$optim_method, mm)
-    expect_equal(mod$env$algorithm, aa)
-    expect_null(mod$env$error)
-    expect_s3_class(mod$env$model, "nls")
-    expect_true(mod$env$model$convInfo$isConv)
-  }
+  skip_if_not_converged(mod)
+  expect_equal(.get_options(mod)$optim_method, mm)
+  expect_equal(mod$env$algorithm, aa)
+  expect_null(mod$env$error)
+  expect_s3_class(mod$env$model, "nls")
+  expect_true(mod$env$model$convInfo$isConv)
 })
 
 test_that("example base model converges with 'port'", {
-  skip_if(is_clang(), "Fails on clang due to toolchain issue unrelated to emaxnls code")
-  skip_if(is_gcc15(), "Fails on gcc15 due to toolchain issue unrelated to emaxnls code") 
-
   mm <- "port"
   aa <- "port"
   expect_no_error(
     emax_nls(
-      structural_model = str_mod, 
-      covariate_model = cov_mod, 
+      structural_model = str_mod,
+      covariate_model = cov_mod,
       data = emax_df,
-      opts = emax_nls_options(optim_method = mm)
+      opts = test_nls_opts(optim_method = mm)
     )
   )
   expect_no_warning(
     emax_nls(
-      structural_model = str_mod, 
-      covariate_model = cov_mod, 
+      structural_model = str_mod,
+      covariate_model = cov_mod,
       data = emax_df,
-      opts = emax_nls_options(optim_method = mm)
+      opts = test_nls_opts(optim_method = mm)
     )
   )
   mod <- emax_nls(
-    structural_model = str_mod, 
-    covariate_model = cov_mod, 
+    structural_model = str_mod,
+    covariate_model = cov_mod,
     data = emax_df,
-    opts = emax_nls_options(optim_method = mm)
+    opts = test_nls_opts(optim_method = mm)
   )
-  if (.is_converged(mod)) {
-    expect_equal(.get_options(mod)$optim_method, mm)
-    expect_equal(mod$env$algorithm, aa)
-    expect_null(mod$env$error)
-    expect_s3_class(mod$env$model, "nls")
-    expect_true(mod$env$model$convInfo$isConv)
-  }
+  skip_if_not_converged(mod)
+  expect_equal(.get_options(mod)$optim_method, mm)
+  expect_equal(mod$env$algorithm, aa)
+  expect_null(mod$env$error)
+  expect_s3_class(mod$env$model, "nls")
+  expect_true(mod$env$model$convInfo$isConv)
 })
 
 test_that("example base model converges with 'levenberg'", {
-  skip_if(is_clang(), "Fails on clang due to toolchain issue unrelated to emaxnls code")
-  skip_if(is_gcc15(), "Fails on gcc15 due to toolchain issue unrelated to emaxnls code") 
   skip_if_not_installed("minpack.lm")
-
   mm <- "levenberg"
   aa <- "LM"
   expect_no_error(
     emax_nls(
-      structural_model = str_mod, 
-      covariate_model = cov_mod, 
+      structural_model = str_mod,
+      covariate_model = cov_mod,
       data = emax_df,
-      opts = emax_nls_options(optim_method = mm)
+      opts = test_nls_opts(optim_method = mm)
     )
   )
   expect_no_warning(
     emax_nls(
-      structural_model = str_mod, 
-      covariate_model = cov_mod, 
+      structural_model = str_mod,
+      covariate_model = cov_mod,
       data = emax_df,
-      opts = emax_nls_options(optim_method = mm)
+      opts = test_nls_opts(optim_method = mm)
     )
   )
   mod <- emax_nls(
-    structural_model = str_mod, 
-    covariate_model = cov_mod, 
+    structural_model = str_mod,
+    covariate_model = cov_mod,
     data = emax_df,
-    opts = emax_nls_options(optim_method = mm)
+    opts = test_nls_opts(optim_method = mm)
   )
-  if (.is_converged(mod)) {
-    expect_equal(.get_options(mod)$optim_method, mm)
-    expect_equal(mod$env$algorithm, aa)
-    expect_null(mod$env$error)
-    expect_s3_class(mod$env$model, "nls")
-    expect_true(mod$env$model$convInfo$isConv)
-  }
+  skip_if_not_converged(mod)
+  expect_equal(.get_options(mod)$optim_method, mm)
+  expect_equal(mod$env$algorithm, aa)
+  expect_null(mod$env$error)
+  expect_s3_class(mod$env$model, "nls")
+  expect_true(mod$env$model$convInfo$isConv)
 })
 
 
@@ -123,115 +111,103 @@ str_mod <- rsp_1 ~ exp_1
 cov_mod <- list(E0 ~ cnt_a, Emax ~ 1, logEC50 ~ 1)
 
 test_that("example covariate model converges with 'gauss'", {
-  skip_if(is_clang(), "Fails on clang due to toolchain issue unrelated to emaxnls code")
-  skip_if(is_gcc15(), "Fails on gcc15 due to toolchain issue unrelated to emaxnls code") 
-  
   mm <- "gauss"
   aa <- "default"
   expect_no_error(
     emax_nls(
-      structural_model = str_mod, 
-      covariate_model = cov_mod, 
+      structural_model = str_mod,
+      covariate_model = cov_mod,
       data = emax_df,
-      opts = emax_nls_options(optim_method = mm)
+      opts = test_nls_opts(optim_method = mm)
     )
   )
   expect_no_warning(
     emax_nls(
-      structural_model = str_mod, 
-      covariate_model = cov_mod, 
+      structural_model = str_mod,
+      covariate_model = cov_mod,
       data = emax_df,
-      opts = emax_nls_options(optim_method = mm)
+      opts = test_nls_opts(optim_method = mm)
     )
   )
   mod <- emax_nls(
-    structural_model = str_mod, 
-    covariate_model = cov_mod, 
+    structural_model = str_mod,
+    covariate_model = cov_mod,
     data = emax_df,
-    opts = emax_nls_options(optim_method = mm)
+    opts = test_nls_opts(optim_method = mm)
   )
-  if (.is_converged(mod)) {
-    expect_equal(.get_options(mod)$optim_method, mm)
-    expect_equal(mod$env$algorithm, aa)
-    expect_null(mod$env$error)
-    expect_s3_class(mod$env$model, "nls")
-    expect_true(mod$env$model$convInfo$isConv)
-  }
+  skip_if_not_converged(mod)
+  expect_equal(.get_options(mod)$optim_method, mm)
+  expect_equal(mod$env$algorithm, aa)
+  expect_null(mod$env$error)
+  expect_s3_class(mod$env$model, "nls")
+  expect_true(mod$env$model$convInfo$isConv)
 })
 
 test_that("example covariate model converges with 'port'", {
-  skip_if(is_clang(), "Fails on clang due to toolchain issue unrelated to emaxnls code")
-  skip_if(is_gcc15(), "Fails on gcc15 due to toolchain issue unrelated to emaxnls code") 
-
   mm <- "port"
   aa <- "port"
   expect_no_error(
     emax_nls(
-      structural_model = str_mod, 
-      covariate_model = cov_mod, 
+      structural_model = str_mod,
+      covariate_model = cov_mod,
       data = emax_df,
-      opts = emax_nls_options(optim_method = mm)
+      opts = test_nls_opts(optim_method = mm)
     )
   )
   expect_no_warning(
     emax_nls(
-      structural_model = str_mod, 
-      covariate_model = cov_mod, 
+      structural_model = str_mod,
+      covariate_model = cov_mod,
       data = emax_df,
-      opts = emax_nls_options(optim_method = mm)
+      opts = test_nls_opts(optim_method = mm)
     )
   )
   mod <- emax_nls(
-    structural_model = str_mod, 
-    covariate_model = cov_mod, 
+    structural_model = str_mod,
+    covariate_model = cov_mod,
     data = emax_df,
-    opts = emax_nls_options(optim_method = mm)
+    opts = test_nls_opts(optim_method = mm)
   )
-  if (.is_converged(mod)) {
-    expect_equal(.get_options(mod)$optim_method, mm)
-    expect_equal(mod$env$algorithm, aa)
-    expect_null(mod$env$error)
-    expect_s3_class(mod$env$model, "nls")
-    expect_true(mod$env$model$convInfo$isConv)
-  }
+  skip_if_not_converged(mod)
+  expect_equal(.get_options(mod)$optim_method, mm)
+  expect_equal(mod$env$algorithm, aa)
+  expect_null(mod$env$error)
+  expect_s3_class(mod$env$model, "nls")
+  expect_true(mod$env$model$convInfo$isConv)
 })
 
 test_that("example covariate model converges with 'levenberg'", {
-  skip_if(is_clang(), "Fails on clang due to toolchain issue unrelated to emaxnls code")
-  skip_if(is_gcc15(), "Fails on gcc15 due to toolchain issue unrelated to emaxnls code") 
   skip_if_not_installed("minpack.lm")
-
   mm <- "levenberg"
   aa <- "LM"
   expect_no_error(
     emax_nls(
-      structural_model = str_mod, 
-      covariate_model = cov_mod, 
+      structural_model = str_mod,
+      covariate_model = cov_mod,
       data = emax_df,
-      opts = emax_nls_options(optim_method = mm)
+      opts = test_nls_opts(optim_method = mm)
     )
   )
   expect_no_warning(
     emax_nls(
-      structural_model = str_mod, 
-      covariate_model = cov_mod, 
+      structural_model = str_mod,
+      covariate_model = cov_mod,
       data = emax_df,
-      opts = emax_nls_options(optim_method = mm)
+      opts = test_nls_opts(optim_method = mm)
     )
   )
   mod <- emax_nls(
-    structural_model = str_mod, 
-    covariate_model = cov_mod, 
+    structural_model = str_mod,
+    covariate_model = cov_mod,
     data = emax_df,
-    opts = emax_nls_options(optim_method = mm)
+    opts = test_nls_opts(optim_method = mm)
   )
-  if (.is_converged(mod)) {
-    expect_equal(.get_options(mod)$optim_method, mm)
-    expect_equal(mod$env$algorithm, aa)
-    expect_null(mod$env$error)
-    expect_s3_class(mod$env$model, "nls")
-    expect_true(mod$env$model$convInfo$isConv)
-  }
+  skip_if_not_converged(mod)
+  expect_equal(.get_options(mod)$optim_method, mm)
+  expect_equal(mod$env$algorithm, aa)
+  expect_null(mod$env$error)
+  expect_s3_class(mod$env$model, "nls")
+  expect_true(mod$env$model$convInfo$isConv)
 })
 
 test_that("emax_nls errors for unknown optim_method", {
@@ -239,10 +215,10 @@ test_that("emax_nls errors for unknown optim_method", {
   for (mm in invalid_optim_methods) {
     expect_error(
       emax_nls(
-        structural_model = str_mod, 
-        covariate_model = cov_mod, 
+        structural_model = str_mod,
+        covariate_model = cov_mod,
         data = emax_df,
-        opts = emax_nls_options(optim_method = "mm")
+        opts = test_nls_opts(optim_method = "mm")
       ),
       class = "emaxnls_error"
     )

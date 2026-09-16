@@ -4,68 +4,69 @@
 \alias{emax_nls}
 \title{Estimate parameters for an Emax regression model}
 \usage{
-emax_nls(structural_model, covariate_model, data, init = NULL, opts = NULL)
+emax_nls(
+  structural_model,
+  covariate_model = NULL,
+  data,
+  init = NULL,
+  opts = NULL
+)
 }
 \arguments{
 \item{structural_model}{A two-sided formula of the form response ~ exposure}
 
-\item{covariate_model}{A list of two-sided formulas, each of specifying a
-covariate model for a structural parameter}
+\item{covariate_model}{A list of two-sided formulas, each specifying a
+covariate model for a structural parameter. When \code{NULL} (the default), an
+intercept-only hyperbolic Emax model is fitted — equivalent to
+\code{list(E0 ~ 1, Emax ~ 1, logEC50 ~ 1)}.}
 
 \item{data}{A data frame that includes all relevant variables}
 
-\item{init}{Initial values and bounds for parameters. See \code{emax_nls_init()}}
+\item{init}{Initial values and bounds for parameters. See \code{\link[=emax_nls_init]{emax_nls_init()}}}
 
-\item{opts}{Model fitting and optimization options. See \code{emax_nls_options()}}
+\item{opts}{Model fitting and optimisation options. See \code{\link[=emax_nls_options]{emax_nls_options()}}}
 }
 \value{
 An object of class \code{emaxnls}
 }
 \description{
-Estimate parameters for an Emax regression model
+Fits an Emax regression model for a continuous response variable using
+nonlinear least squares. For binary outcomes, use \code{\link[=emax_logistic]{emax_logistic()}} instead.
 }
 \details{
-The \code{emax_nls()} function is the workhorse function for estimating an Emax
-regression model. Pass a two-sided formula to the \code{structural_model} argument
-to specify the exposure variable and the response variable
-(e.g., \code{response ~ exposure}), and pass a list of formulas to the
-\code{covariate_model} argument to specify covariates of interest. At a minimum
-the covariate model requires specification of the covariate model for the
-E0 parameter, the Emax parameter, and the logEC50 parameter. For example,
-a formula like \code{E0 ~ age + group} would indicate that \code{age} and \code{group}
-should both be included as covariates on the baseline response E0. When
-no covariates are to be added, use a formula like \code{Emax ~ 1}.
+Pass a two-sided formula to \code{structural_model} to specify the response and
+exposure variables (e.g., \code{response ~ exposure}), and a list of formulas to
+\code{covariate_model} to specify covariates. At a minimum the covariate model
+requires formulas for E0, Emax, and logEC50. A formula like \code{E0 ~ age + group}
+includes \code{age} and \code{group} as covariates on the baseline response; use
+\code{Emax ~ 1} when no covariates are to be added for a parameter.
 
-The \code{emax_nls()} function can support sigmoidal emax models as well as
-hyperbolic models. To build a sigmoidal model (where the Hill parameter)
-is estimated from the data, the \code{covariate_model} argument must also
-include a formula for the \code{logHill} parameter. For instance, if the
-covariate model includes \code{logHill ~ 1}, the model will estimate the value
-of the Hill parameter (with no covariates on it) from the data set.
+To fit a sigmoidal Emax model (estimating the Hill parameter), include a
+formula for \code{logHill} in \code{covariate_model}, e.g. \code{logHill ~ 1}. Without
+this term a hyperbolic model is fitted. Interaction terms in the covariate
+model are not currently supported.
 
-At present, \code{emax_nls()} does not support binary response variables, nor
-is it possible to specify interaction terms in the covariate model.
-
-When estimating model parameters, the \code{init} argument can be used to
-specify the starting values for the optimization. If unspecified,
-the \code{emax_nls_init()} function is used to automatically guess sensible
-starting values. Please see the documentation of that function for
-additional details on manually specifying the initial values.
-
-The \code{emax_nls()} function currently supports three optimization methods:
-the Gauss-Newton algorithm, the Levenberg-Marquardt algorithm, and the
-'nl2sol' algorithm from the Port library. For more information on how
-to customize the optimization procedure, please see
-the documentation for \code{emax_nls_options()}.
+Starting values are constructed automatically via \code{\link[=emax_nls_init]{emax_nls_init()}} unless
+the \code{init} argument is supplied manually. Three optimisation algorithms are
+available; see \code{\link[=emax_nls_options]{emax_nls_options()}} for details.
 }
 \examples{
+# simplest call: hyperbolic Emax with no covariates
+emax_nls(
+  structural_model = rsp_1 ~ exp_1,
+  data = emax_df,
+  opts = emax_nls_options(max_time = 10)
+)
+
+# with a covariate on the baseline parameter
 emax_nls(
   structural_model = rsp_1 ~ exp_1, 
   covariate_model = list(E0 ~ cnt_a, Emax ~ 1, logEC50 ~ 1), 
-  data = emax_df
+  data = emax_df,
+  opts = emax_nls_options(max_time = 10)
 )
  
 }
 \seealso{
-\code{emax_nls_options()}, \code{emax_nls_init()}
+\code{\link[=emax_nls_options]{emax_nls_options()}}, \code{\link[=emax_nls_init]{emax_nls_init()}}
 }

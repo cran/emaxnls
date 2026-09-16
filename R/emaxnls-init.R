@@ -62,10 +62,6 @@
     covariate != "Intercept" & parameter == "logHill" ~ loghill_max
   ))
       
-  names(ini$start) <- coefficient_vec
-  names(ini$lower) <- coefficient_vec
-  names(ini$upper) <- coefficient_vec
-
   return(ini)
 }
 
@@ -81,6 +77,14 @@
   n_placebo <- sum(is_placebo)
   n_total <- length(exposure)
   n_dosed <- n_total - n_placebo
+
+  if (n_dosed == 0L) {
+    stop(
+      "cannot initialise Emax parameters: data contains no dosed observations ",
+      "(all exposure values are 0)",
+      call. = FALSE
+    )
+  }
 
   # log-exposure and response for the dosed samples
   log_exp_dosed <- log(exposure[!is_placebo])
@@ -136,15 +140,27 @@
 
 # guess the scale associated with key variables
 .guess_var_scale <- function(exposure, response, residuals, cov_names, design) {
+  cov_sds <- .map_dbl(
+    .x = cov_names,
+    .f = function(nn) stats::sd(design[[nn]])
+  )
+  names(cov_sds) <- cov_names
+  if (any(cov_sds == 0, na.rm = TRUE)) {
+    zero_names <- cov_names[!is.na(cov_sds) & cov_sds == 0]
+    rlang::warn(
+      paste0(
+        "covariate(s) with zero variance: ", paste(zero_names, collapse = ", "),
+        "; using sd = 1 for parameter bound estimation"
+      ),
+      class = "emaxnls_warning"
+    )
+    cov_sds[!is.na(cov_sds) & cov_sds == 0] <- 1
+  }
   sds <- list(
-    cov = .map_dbl(
-      .x = cov_names,
-      .f = function(nn) stats::sd(design[[nn]])
-    ),
+    cov = cov_sds,
     exp = stats::sd(exposure),
     rsp = stats::sd(response),
     res = stats::sd(residuals)
   )
-  names(sds$cov) <- cov_names
   return(sds)
 }

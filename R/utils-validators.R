@@ -1,7 +1,7 @@
 
 .validate_structural_formula <- function(formula, names = NULL) {
 
-  errmsg <- "`structural_formula` must be a two-sided formula of the form `response ~ exposure`"
+  errmsg <- "`structural_model` must be a two-sided formula of the form `response ~ exposure`"
   .assert(inherits(formula, "formula"), errmsg)
   .assert(length(formula) == 3L, errmsg)
   .assert(length(all.vars(formula)) == 2L, errmsg)
@@ -13,7 +13,7 @@
 
 .validate_covariate_formula <- function(formula, names = NULL) {
 
-  errmsg <- "`covariate_formula` must be a list of 3 or 4 two-sided formulas"
+  errmsg <- "`covariate_model` must be a list of 3 or 4 two-sided formulas"
   .assert(inherits(formula, "list"), errmsg)
   .assert(length(formula) %in% 3:4, errmsg)
   .assert(all(.map_lgl(formula, function(x) .is_formula(x, sides = 2L))), errmsg)
@@ -45,6 +45,13 @@
   .assert(all(.map_lgl(candidates, is.character)), errmsg)
   .assert(all(unlist(candidates) %in% names), errmsg)
 
+}
+
+.validate_max_time <- function(max_time) {
+  .assert(
+    .is_scalar_num(max_time) && max_time > 0,
+    "`max_time` must be a single positive number (use `Inf` for no time limit)"
+  )
 }
 
 .validate_optim_method <- function(optim_method) {
@@ -90,9 +97,22 @@
     is.null(param) | (is.numeric(param) & length(param) == length(coef(mod))) , 
     "`param` must be a named numeric vector of parameters or NULL"
   )
+  if (!is.null(param)) {
+    .assert(
+      identical(names(param), names(coef(mod))),
+      "`param` names must match those of the model coefficients"
+    )
+  }
+}
+
+.validate_binary_response <- function(response, name) {
+  valid_vals <- all(response %in% c(0, 1, NA))
   .assert(
-    names(param) == names(coef(mod)), 
-    "`param` names must match those of the model coefficients"
+    valid_vals,
+    paste0(
+      "response variable '", name, "' must be binary (0/1); ",
+      "for continuous outcomes use emax_nls() instead"
+    )
   )
 }
 
@@ -121,9 +141,33 @@
 }
 
 .is_emaxnls <- function(x) inherits(x, "emaxnls")
+.is_emaxlogistic <- function(x) inherits(x, "emaxlogistic")
 
 .is_scalar_num <- function(x) is.numeric(x) & length(x) == 1L
 .is_scalar_chr <- function(x) is.character(x) & length(x) == 1L
 .is_scalar_lgl <- function(x) is.logical(x) & length(x) == 1L
 
 .is_converged <- function(x) is.null(x$env$error)
+
+# Return a short human-readable string describing why the model did or did not
+# converge. Used to populate the `names` attribute of `emax_converged()` and
+# the `convergence_reason` column in the SCM history table.
+#
+# Two failure modes get a clean label:
+#   - elapsed time limit hit (setTimeLimit): "maximum time exceeded"
+#   - optimiser iteration budget exhausted:  "maximum iterations exceeded"
+#     (matches Gauss-Newton "number of iterations exceeded maximum of X" and
+#      Levenberg-Marquardt "Number of iterations has reached 'maxiter'")
+#
+# All other failures -- including singular gradient, step factor collapsed
+# below minFactor (Gauss-Newton), Port false/singular convergence codes 7-8,
+# Port function-evaluation limit (code 9), and Levenberg-Marquardt tolerance
+# failures -- fall through to the raw optimiser condition message, which is
+# the most informative thing to return in those cases.
+.convergence_reason <- function(x) {
+  if (.is_converged(x)) return("converged")
+  msg <- conditionMessage(x$env$error)
+  if (grepl("time limit", msg, ignore.case = TRUE)) return("maximum time exceeded")
+  if (grepl("iteration", msg, ignore.case = TRUE)) return("maximum iterations exceeded")
+  msg
+}

@@ -10,13 +10,34 @@ emax_converged(mod)
 \item{mod}{An \code{emaxnls} object}
 }
 \value{
-Logical value
+A named logical scalar. The value is \code{TRUE} when the model
+converged and \code{FALSE} otherwise. The \code{names} attribute holds a short
+description of the outcome:
+\itemize{
+\item \code{"converged"}: the optimiser reached a solution successfully.
+\item \code{"maximum time exceeded"}: the \code{max_time} limit set in
+\code{\link[=emax_nls_options]{emax_nls_options()}} / \code{\link[=emax_logistic_options]{emax_logistic_options()}} was hit before the
+optimiser finished.
+\item \code{"maximum iterations exceeded"}: the optimiser ran out of iterations.
+This applies to the Gauss-Newton algorithm (when \code{\link[stats:nls]{stats::nls()}} reports
+"number of iterations exceeded maximum") and to the Levenberg-Marquardt
+algorithm (when \code{\link[minpack.lm:nlsLM]{minpack.lm::nlsLM()}} reports that the iteration count has reached
+\code{maxiter}). The iteration budget can be increased via the
+\code{optim_control} argument of \code{\link[=emax_nls_options]{emax_nls_options()}}.
+\item Raw optimiser message: all other failures return the error message from
+the underlying optimiser directly. Common examples include a singular
+gradient matrix at the initial parameter estimates, the Gauss-Newton
+step factor collapsing below \code{minFactor}, and Port-algorithm convergence
+codes such as false convergence (code 8) or singular convergence (code 7).
+These messages are algorithm-specific and are passed through unchanged
+because no single label covers them accurately.
+}
 }
 \description{
-Check Emax regression model for convergence status
+Returns \code{TRUE} if the model converged during fitting and \code{FALSE} otherwise.
+The reason for convergence or non-convergence is attached as the \code{names}
+attribute of the return value, so it prints alongside the logical result.
 }
-\details{
-This is a convenience function that takes an Emax regression
-object as input. It returns \code{TRUE} if the optimization routine
-converged during model fitting, and \code{FALSE} if it did not.
+\seealso{
+\code{\link[=emax_nls]{emax_nls()}}, \code{\link[=emax_nls_options]{emax_nls_options()}}
 }

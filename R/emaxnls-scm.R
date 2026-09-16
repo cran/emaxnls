@@ -1,7 +1,9 @@
 
-.emax_scm_forward <- function(mod, candidates, threshold, seed = NULL) {
+.emax_scm_forward <- function(mod, candidates, threshold, criterion = "p-value", seed = NULL) {
   .assert(.is_emaxnls(mod), "`mod` must be an emaxnls object")
   .assert(.is_scalar_num(threshold), "`threshold` must be a single number")
+  .assert(.is_scalar_chr(criterion), "`criterion` must be a single character string")
+  .assert(criterion %in% c("p-value", "aic", "bic"), '`criterion` must be "p-value", "aic", or "bic"')
   .assert(.is_scalar_num(seed) | is.null(seed), "`seed` must be NULL or a single number")
   .validate_candidate_list(candidates, names(mod$data))
 
@@ -9,15 +11,17 @@
   finished <- FALSE
   while(!finished) {
     old_mod <- mod
-    mod <- .emax_once_forward(mod, candidates, threshold)
+    mod <- .emax_once_forward(mod, candidates, threshold, criterion)
     if (.is_same(mod, old_mod)) finished <- TRUE
   }
   return(mod)
 }
 
-.emax_scm_backward <- function(mod, candidates, threshold, seed = NULL) {
+.emax_scm_backward <- function(mod, candidates, threshold, criterion = "p-value", seed = NULL) {
   .assert(.is_emaxnls(mod), "`mod` must be an emaxnls object")
   .assert(.is_scalar_num(threshold), "`threshold` must be a single number")
+  .assert(.is_scalar_chr(criterion), "`criterion` must be a single character string")
+  .assert(criterion %in% c("p-value", "aic", "bic"), '`criterion` must be "p-value", "aic", or "bic"')
   .assert(.is_scalar_num(seed) | is.null(seed), "`seed` must be NULL or a single number")
   .validate_candidate_list(candidates, names(mod$data))
 
@@ -25,7 +29,7 @@
   finished <- FALSE
   while(!finished) {
     old_mod <- mod
-    mod <- .emax_once_backward(mod, candidates, threshold)
+    mod <- .emax_once_backward(mod, candidates, threshold, criterion)
     if (.is_same(mod, old_mod)) finished <- TRUE
   }
   return(mod)
@@ -44,10 +48,12 @@
       iteration = 0L,
       attempt = 0L,
       step = "base model",
+      criterion = NA_character_,
       action = NA_character_,
       term_tested = NA_character_,
       model_tested = .get_short_formula(mod),
       model_converged = .is_converged(mod),
+      convergence_reason = .convergence_reason(mod),
       term_p_value = NA_real_,
       model_aic = as.numeric(stats::AIC(mod)), # coercion for emaxnls_null cases
       model_bic = as.numeric(stats::BIC(mod)),
@@ -60,10 +66,12 @@
       iteration = max(history$iteration) + 1L,
       attempt = max(history$attempt) + 1L,
       step = "final model",
+      criterion = NA_character_,
       action = NA_character_,
       term_tested = NA_character_,
       model_tested = .get_short_formula(mod),
       model_converged = .is_converged(mod),
+      convergence_reason = .convergence_reason(mod),
       term_p_value = NA_real_,
       model_aic = as.numeric(stats::AIC(mod)), # coercion for emaxnls_null cases
       model_bic = as.numeric(stats::BIC(mod)),
@@ -73,7 +81,7 @@
   return(history)
 }
 
-.emax_once_forward <- function(mod, candidates, threshold) {
+.emax_once_forward <- function(mod, candidates, threshold, criterion = "p-value") {
 
   quiet <- TRUE
   history <- TRUE
@@ -89,27 +97,43 @@
     iter <- max(scm_history$iteration) + 1L
     attm <- max(scm_history$attempt)
   }
- 
-  # note for future development: this implementation hard-codes the
-  # assumption that selection is based on p-values
-  lowest_p <- threshold
+
+  use_ic <- criterion %in% c("aic", "bic")
+  ic_fn <- if (criterion == "bic") stats::BIC else stats::AIC
+
+  # best_metric tracks the selection criterion across candidates:
+  # for "p-value": the lowest p-value seen so far (initialised at threshold)
+  # for "aic"/"bic": the lowest IC seen so far (initialised at current model IC)
+  best_metric <- if (use_ic) as.numeric(ic_fn(mod)) else threshold
   best_mod <- mod
   best_mod_attm <- NA_integer_
   new_term <- NULL
+
   for(t in terms) {
     candidate_mod <- .emax_add_term(mod, formula = t, quiet = TRUE)
     if (!.is_same(mod, candidate_mod)) { # don't compare to self
       attm <- attm + 1L
       p <- NA_real_
-      converge <- !is.null(.get_nls(candidate_mod))
+      converge <- .is_converged(candidate_mod)
+      converge_reason <- .convergence_reason(candidate_mod)
       if (!quiet) .inform("try add: ", deparse(t))
       if (converge) {  # skip if nls() fails
-        p <- .anova_p(mod, candidate_mod)
-        if (p < lowest_p) {
-          best_mod <- candidate_mod
-          best_mod_attm <- attm
-          new_term <- t
-          lowest_p <- p
+        if (use_ic) {
+          candidate_ic <- as.numeric(ic_fn(candidate_mod))
+          if (candidate_ic < best_metric) {
+            best_mod <- candidate_mod
+            best_mod_attm <- attm
+            new_term <- t
+            best_metric <- candidate_ic
+          }
+        } else {
+          p <- .anova_p(mod, candidate_mod)
+          if (p < best_metric) {
+            best_mod <- candidate_mod
+            best_mod_attm <- attm
+            new_term <- t
+            best_metric <- p
+          }
         }
       }
       if (history) {
@@ -118,10 +142,12 @@
           iteration = iter,
           attempt = attm,
           step = "forward",
+          criterion = criterion,
           action = "add",
           term_tested = deparse(t),
           model_tested = .get_short_formula(candidate_mod),
           model_converged = converge,
+          convergence_reason = converge_reason,
           term_p_value = p,
           model_aic = as.numeric(stats::AIC(candidate_mod)),
           model_bic = as.numeric(stats::BIC(candidate_mod)),
@@ -142,7 +168,7 @@
   return(best_mod)
 }
 
-.emax_once_backward <- function(mod, candidates, threshold) {
+.emax_once_backward <- function(mod, candidates, threshold, criterion = "p-value") {
 
   quiet <- TRUE
   history <- TRUE
@@ -156,26 +182,42 @@
     attm <- max(scm_history$attempt)
   }
 
-  # note for future development: this implementation hard-codes the
-  # assumption that selection is based on p-values
-  highest_p <- threshold
+  use_ic <- criterion %in% c("aic", "bic")
+  ic_fn <- if (criterion == "bic") stats::BIC else stats::AIC
+
+  # best_metric tracks the selection criterion across candidates:
+  # for "p-value": the highest p-value seen so far (initialised at threshold)
+  # for "aic"/"bic": the lowest IC seen so far (initialised at current model IC)
+  best_metric <- if (use_ic) as.numeric(ic_fn(mod)) else threshold
   best_mod <- mod
   best_mod_attm <- NA_integer_
   new_term <- NULL
+
   for(t in terms) {
     candidate_mod <- .emax_remove_term(mod, formula = t, quiet = TRUE)
     if (!.is_same(mod, candidate_mod)) { # don't compare to self
       attm <- attm + 1L
       p <- NA_real_
-      converge <- !is.null(.get_nls(candidate_mod))
+      converge <- .is_converged(candidate_mod)
+      converge_reason <- .convergence_reason(candidate_mod)
       if (!quiet) .inform("try remove: ", deparse(t))
       if (converge) {  # skip if nls() fails
-        p <- .anova_p(candidate_mod, mod)
-        if (p > highest_p) {
-          best_mod <- candidate_mod
-          best_mod_attm <- attm
-          new_term <- t
-          highest_p <- p
+        if (use_ic) {
+          candidate_ic <- as.numeric(ic_fn(candidate_mod))
+          if (candidate_ic < best_metric) {
+            best_mod <- candidate_mod
+            best_mod_attm <- attm
+            new_term <- t
+            best_metric <- candidate_ic
+          }
+        } else {
+          p <- .anova_p(candidate_mod, mod)
+          if (p > best_metric) {
+            best_mod <- candidate_mod
+            best_mod_attm <- attm
+            new_term <- t
+            best_metric <- p
+          }
         }
       }
       if (history) {
@@ -184,10 +226,12 @@
           iteration = iter,
           attempt = attm,
           step = "backward",
+          criterion = criterion,
           action = "remove",
           term_tested = deparse(t),
           model_tested = .get_short_formula(candidate_mod),
           model_converged = converge,
+          convergence_reason = converge_reason,
           term_p_value = p,
           model_aic = as.numeric(stats::AIC(candidate_mod)),
           model_bic = as.numeric(stats::BIC(candidate_mod)),
@@ -226,6 +270,9 @@
 
 .anova_p <- function(obj1, obj2) {
   a <- stats::anova(obj1, obj2)
+  if (.is_emaxlogistic(obj1)) {
+    return(a$`Pr(>Chi)`[2L])
+  }
   return(a$`Pr(>F)`[2L])
 }
 
@@ -234,4 +281,3 @@
   aic2 <- as.numeric(stats::AIC(obj2))
   return(aic1 - aic2)
 }
-

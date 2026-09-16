@@ -25,6 +25,12 @@
   }
 }
 
+#' @rdname emax_fun
+#' @export
+emax_fun.emaxnls <- function(mod, ...) {
+  .emax_fun(mod)
+}
+
 .emax_resample <- function(mod, nsim, seed = NULL) {
 
   if (!is.null(seed)) set.seed(seed)
@@ -35,25 +41,23 @@
   sig <- summary(.get_nls(mod))$sigma
   nr <- nrow(mod$data)
 
-  var <- unique(unlist(mod$variables))
-  dat <- mod$data[,var]
+  var <- unique(stats::na.omit(mod$info$variables$var_name))
+  dat <- mod$data[, var]
   dat$dat_id <- 1L:nr
 
-  if (!requireNamespace("mvtnorm", quietly = TRUE)) {
-    .abort("package mvtnorm is required for simulate()")
-  }
-  par <- mvtnorm::rmvnorm(nsim, mean = est, sigma = cov)
+  par <- .rmvnorm(nsim, mean = est, sigma = cov)
   colnames(par) <- lbl
 
   .f <- .emax_fun(mod)
 
   sim <- list()
   for (ss in 1L:nsim) {
+    mu_ss <- .f(param = par[ss,])
     sim[[ss]] <- .tibble(
       dat_id = 1L:nr,
       sim_id = ss,
-      mu = .f(param = par[ss,]),
-      val = mu + stats::rnorm(nr, 0, sd = sig)
+      mu  = mu_ss,
+      val = mu_ss + stats::rnorm(nr, 0, sd = sig)
     )
   }
   sim <- do.call(rbind, sim)

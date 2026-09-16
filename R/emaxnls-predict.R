@@ -7,6 +7,11 @@
                          level = 0.95, 
                          ...) {
 
+  # Coerce to base data.frame: .fgrad() uses [i, v] subsetting, which for
+  # tibble inputs returns a 1x1 tibble rather than a scalar, corrupting both
+  # the return type and gradient computation.
+  if (!is.null(newdata)) newdata <- as.data.frame(newdata)
+
   if (is.null(newdata)) {
     # when the user does not specify new data, we can
     # pull the value and gradient directly from the 
@@ -35,12 +40,13 @@
   # compute the standard error
   vcov <- vcov(object)
   df <- summary(object)$df[2]
+  rs <- summary(object)$sigma
   gs <- rowSums((fg$grad %*% vcov) * fg$grad)
   se <- sqrt(gs)
 
   # if the standard error is requested with no 
-  # interval, return list with three components
-  if (interval == "none") return(list(fit = fg$value, se.fit = se, df = df))
+  # interval, return list with four components
+  if (interval == "none") return(list(fit = fg$value, se.fit = se, residual.scale = rs, df = df))
 
   # compute confidence intervals
   alpha <- 1 - level
@@ -52,11 +58,11 @@
   )
 
   # if interval is requested but no standard error, 
-  # return data frame with three colums
+  # return data frame with three columns
   if (se.fit == FALSE) return(ci_fit)
 
   # otherwise, return the list
-  return(list(fit = ci_fit, se.fit = se, df = df))
+  return(list(fit = ci_fit, se.fit = se, residual.scale = rs, df = df))
 }
 
 # function to calculate gradient with respect to model parameters

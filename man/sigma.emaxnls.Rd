@@ -2,7 +2,7 @@
 % Please edit documentation in R/emaxnls-methods.R
 \name{sigma.emaxnls}
 \alias{sigma.emaxnls}
-\title{Residual standard deviation for Emax regression models}
+\title{Residual standard deviation for an Emax regression model}
 \usage{
 \method{sigma}{emaxnls}(object, ...)
 }
@@ -12,16 +12,25 @@
 \item{...}{Ignored}
 }
 \value{
-Numeric
+A numeric scalar
 }
 \description{
-Residual standard deviation for Emax regression models
+Returns the estimated residual standard deviation from the NLS fit. This
+method is only available for \code{emaxnls} objects; there is no analogous
+quantity for \code{emaxlogistic} models.
+}
+\details{
+Under the assumption of normally distributed errors, \code{sigma} estimates the
+standard deviation of the error term in the Emax model. It is computed as
+the square root of the residual sum of squares divided by the residual
+degrees of freedom.
 }
 \examples{
 mod <- emax_nls(
   structural_model = rsp_1 ~ exp_1, 
   covariate_model = list(E0 ~ cnt_a, Emax ~ 1, logEC50 ~ 1), 
-  data = emax_df
+  data = emax_df,
+  opts = emax_nls_options(max_time = 10)
 )
 sigma(mod)
 
